@@ -1,0 +1,77 @@
+{{--
+  FORM EDIT TARIF (PER HARI)
+--}}
+@extends('layouts.dashboard')
+
+@section('title', 'Edit Tarif Parkir - Parkir SMKN 8 Jember')
+
+@section('content')
+<div class="max-w-2xl mx-auto">
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold text-navy">Edit Tarif Parkir</h1>
+        <p class="text-sm text-slate-500">Perbarui data tarif parkir</p>
+    </div>
+
+    <div class="bg-white rounded-xl border border-gray p-6 shadow-sm">
+        <form method="POST" action="{{ route('tarif.update', $tarif->id) }}">
+            @csrf
+            @method('PUT')
+
+            <div class="space-y-4">
+                <!-- Area -->
+                <div>
+                    <label for="area_id" class="block text-sm font-semibold text-slate-700 mb-1">Area Parkir</label>
+                    <select id="area_id" name="area_id" 
+                            class="w-full px-4 py-2.5 border border-gray rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-yellow/50 focus:border-yellow transition-all @error('area_id') border-red-500 @enderror" required>
+                        <option value="">Pilih Area</option>
+                        @foreach($areas as $area)
+                            <option value="{{ $area->id }}" {{ old('area_id', $tarif->area_id) == $area->id ? 'selected' : '' }}>
+                                {{ $area->nama_area }} (Kapasitas: {{ $area->kapasitas }})
+                            </option>
+                        @endforeach
+                    </select>
+                    @error('area_id')
+                        <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+                    @enderror
+                </div>
+
+                <!-- Jenis Kendaraan -->
+                <div>
+                    <label for="jenis_kendaraan" class="block text-sm font-semibold text-slate-700 mb-1">Jenis Kendaraan</label>
+                    <select id="jenis_kendaraan" name="jenis_kendaraan" 
+                            class="w-full px-4 py-2.5 border border-gray rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-yellow/50 focus:border-yellow transition-all @error('jenis_kendaraan') border-red-500 @enderror" required>
+                        <option value="">Pilih Jenis</option>
+                        <option value="Motor" {{ old('jenis_kendaraan', $tarif->jenis_kendaraan) == 'Motor' ? 'selected' : '' }}>Motor</option>
+                        <option value="Mobil" {{ old('jenis_kendaraan', $tarif->jenis_kendaraan) == 'Mobil' ? 'selected' : '' }}>Mobil</option>
+                    </select>
+                    @error('jenis_kendaraan')
+                        <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+                    @enderror
+                </div>
+
+                <!-- Tarif per Hari -->
+                <div>
+                    <label for="tarif" class="block text-sm font-semibold text-slate-700 mb-1">Tarif per Hari (Rp)</label>
+                    <input type="number" id="tarif" name="tarif" value="{{ old('tarif', $tarif->tarif) }}" 
+                           class="w-full px-4 py-2.5 border border-gray rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-yellow/50 focus:border-yellow transition-all @error('tarif') border-red-500 @enderror"
+                           placeholder="Contoh: 2000, 5000" min="0" required>
+                    @error('tarif')
+                        <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+                    @enderror
+                </div>
+            </div>
+
+            <div class="flex gap-3 mt-6 pt-4 border-t border-gray">
+                <button type="submit" class="bg-yellow text-navy font-bold px-6 py-2.5 rounded-lg hover:bg-yellow/90 transition-all shadow-sm flex items-center gap-2">
+                    <span class="material-symbols-outlined">save</span>
+                    Update
+                </button>
+                <a href="{{ route('tarif.index') }}" class="bg-gray-100 text-slate-600 font-bold px-6 py-2.5 rounded-lg hover:bg-gray-200 transition-all flex items-center gap-2">
+                    <span class="material-symbols-outlined">close</span>
+                    Batal
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+@endsection
