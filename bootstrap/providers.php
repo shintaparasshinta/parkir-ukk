@@ -1,7 +1,7 @@
 <?php
 
-use App\Providers\AppServiceProvider;
+use App\Providers\AppServiceProvider; // Mengimpor AppServiceProvider untuk didaftarkan
 
-return [
-    AppServiceProvider::class,
+return [ // Kembalikan array berisi daftar service provider yang aktif
+    AppServiceProvider::class, // Daftarkan AppServiceProvider sebagai provider utama aplikasi
 ];
