@@ -6,7 +6,7 @@ use App\Models\Transaksi; // Mengimpor model Transaksi untuk query data transaks
 use App\Models\AreaParkir; // Mengimpor model AreaParkir untuk filter & dropdown area
 use Illuminate\Http\Request; // Mengimpor kelas Request untuk menangani input HTTP
 use Carbon\Carbon; // Mengimpor Carbon untuk format tanggal
-use Illuminate\Support\Facades\DB; // Mengimpor facade DB untuk query raw (DATE, SUM, CASE)
+use Illuminate\Support\Facades\DB; // Mengimpor facade DB untuk query raw (DATE, SUM, CASE, COALESCE)
 
 class LaporanController extends Controller // Mendefinisikan controller laporan
 {
@@ -17,10 +17,15 @@ class LaporanController extends Controller // Mendefinisikan controller laporan
         $areaId = $request->input('area_id'); // Mengambil filter area parkir
         $jenisKendaraan = $request->input('jenis_kendaraan'); // Mengambil filter jenis kendaraan
 
+        // Query dasar
         $query = Transaksi::with(['kendaraan', 'areaParkir', 'petugas']); // Query dasar dengan eager load relasi
 
+        // Filter berdasarkan tanggal (waktu masuk ATAU waktu keluar)
         if ($startDate && $endDate) { // Jika kedua tanggal diisi
-            $query->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59']); // Filter transaksi dalam rentang tanggal
+            $query->where(function($q) use ($startDate, $endDate) { // Mengelompokkan kondisi OR agar tidak bocor dari filter lain
+                $q->whereBetween('waktu_masuk', [$startDate . ' 00:00:00', $endDate . ' 23:59:59']) // Transaksi yang masuk dalam rentang
+                  ->orWhereBetween('waktu_keluar', [$startDate . ' 00:00:00', $endDate . ' 23:59:59']); // Atau yang keluar dalam rentang
+            });
         }
         if ($areaId) { // Jika filter area dipilih
             $query->where('area_id', $areaId); // Filter berdasarkan area_id
@@ -35,15 +40,30 @@ class LaporanController extends Controller // Mendefinisikan controller laporan
 
         // Hitung total
         $totalTransaksi = $transaksi->total(); // Total seluruh transaksi (dari paginator)
-        $totalMasuk = (clone $query)->where('status', 'masuk')->count(); // Clone query agar filter tidak terpengaruh, hitung total masuk
-        $totalKeluar = (clone $query)->where('status', 'keluar')->count(); // Clone query, hitung total keluar
-        $totalPendapatan = (clone $query)->where('status', 'keluar')->sum('tarif'); // Clone query, jumlahkan tarif transaksi keluar
+        
+        // Hitung masuk berdasarkan waktu_masuk, keluar berdasarkan waktu_keluar
+        $totalMasuk = 0; // Inisialisasi total masuk
+        $totalKeluar = 0; // Inisialisasi total keluar
+        $totalPendapatan = 0; // Inisialisasi total pendapatan
 
-        // Data untuk Chart (Query Baru yang Bersih)
+        if ($startDate && $endDate) { // Jika filter tanggal diisi
+            $totalMasuk = (clone $query)->whereBetween('waktu_masuk', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])->count(); // Hitung total masuk dalam rentang
+            $totalKeluar = (clone $query)->where('status', 'keluar')->whereBetween('waktu_keluar', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])->count(); // Hitung total keluar dalam rentang
+            $totalPendapatan = (clone $query)->where('status', 'keluar')->whereBetween('waktu_keluar', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])->sum('tarif'); // Jumlahkan tarif transaksi keluar dalam rentang
+        } else { // Jika tidak ada filter tanggal
+            $totalMasuk = (clone $query)->count(); // Hitung seluruh transaksi (semua dianggap masuk)
+            $totalKeluar = (clone $query)->where('status', 'keluar')->count(); // Hitung seluruh transaksi keluar
+            $totalPendapatan = (clone $query)->where('status', 'keluar')->sum('tarif'); // Jumlahkan seluruh tarif transaksi keluar
+        }
+
+        // ================ DATA UNTUK GRAFIK ================
         $chartQuery = Transaksi::query(); // Query baru khusus untuk grafik (tanpa eager load)
 
         if ($startDate && $endDate) { // Terapkan ulang filter tanggal
-            $chartQuery->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+            $chartQuery->where(function($q) use ($startDate, $endDate) {
+                $q->whereBetween('waktu_masuk', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
+                  ->orWhereBetween('waktu_keluar', [$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+            });
         }
         if ($areaId) { // Terapkan ulang filter area
             $chartQuery->where('area_id', $areaId);
@@ -54,12 +74,13 @@ class LaporanController extends Controller // Mendefinisikan controller laporan
             });
         }
 
+        // Gunakan COALESCE untuk mengambil tanggal keluar, kalau null ambil tanggal masuk
         $chartData = $chartQuery // Query agregasi untuk grafik
             ->select(
-                DB::raw('DATE(created_at) as tanggal'), // Ambil tanggal saja dari created_at
-                DB::raw('SUM(CASE WHEN status = "masuk" THEN 1 ELSE 0 END) as masuk'), // Hitung jumlah masuk per tanggal
-                DB::raw('SUM(CASE WHEN status = "keluar" THEN 1 ELSE 0 END) as keluar'), // Hitung jumlah keluar per tanggal
-                DB::raw('SUM(CASE WHEN status = "keluar" THEN tarif ELSE 0 END) as pendapatan') // Jumlahkan pendapatan per tanggal
+                DB::raw('DATE(COALESCE(waktu_keluar, waktu_masuk)) as tanggal'), // Ambil tanggal keluar, fallback ke tanggal masuk
+                DB::raw('SUM(CASE WHEN DATE(waktu_masuk) BETWEEN "' . ($startDate ?? '1970-01-01') . '" AND "' . ($endDate ?? '2099-12-31') . '" THEN 1 ELSE 0 END) as masuk'), // Hitung jumlah masuk per tanggal
+                DB::raw('SUM(CASE WHEN status = "keluar" AND DATE(waktu_keluar) BETWEEN "' . ($startDate ?? '1970-01-01') . '" AND "' . ($endDate ?? '2099-12-31') . '" THEN 1 ELSE 0 END) as keluar'), // Hitung jumlah keluar per tanggal
+                DB::raw('SUM(CASE WHEN status = "keluar" AND DATE(waktu_keluar) BETWEEN "' . ($startDate ?? '1970-01-01') . '" AND "' . ($endDate ?? '2099-12-31') . '" THEN tarif ELSE 0 END) as pendapatan') // Jumlahkan pendapatan per tanggal
             )
             ->groupBy('tanggal') // Kelompokkan per tanggal
             ->orderBy('tanggal', 'asc') // Urutkan tanggal naik
@@ -90,8 +111,11 @@ class LaporanController extends Controller // Mendefinisikan controller laporan
 
         $query = Transaksi::with(['kendaraan', 'areaParkir', 'petugas']); // Query dasar dengan relasi
 
-        if ($startDate && $endDate) { // Terapkan filter rentang tanggal
-            $query->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+        if ($startDate && $endDate) { // Terapkan filter rentang tanggal (masuk ATAU keluar)
+            $query->where(function($q) use ($startDate, $endDate) {
+                $q->whereBetween('waktu_masuk', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
+                  ->orWhereBetween('waktu_keluar', [$startDate . ' 00:00:00', $endDate . ' 23:59:59']);
+            });
         }
         if ($areaId) { // Terapkan filter area
             $query->where('area_id', $areaId);

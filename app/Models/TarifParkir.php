@@ -1,24 +1,24 @@
 <?php
 
-namespace App\Models;
+namespace App\Models; // Menentukan namespace model
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory; // Mengimpor trait HasFactory
+use Illuminate\Database\Eloquent\Model; // Mengimpor kelas dasar Model Eloquent
 
-class TarifParkir extends Model
+class TarifParkir extends Model // Mendefinisikan model TarifParkir
 {
-    use HasFactory;
+    use HasFactory; // Mengaktifkan trait HasFactory
 
-    protected $table = 'tarif_parkir';
+    protected $table = 'tarif_parkir'; // Menentukan nama tabel eksplisit
 
-    protected $fillable = [
-        'area_id',
-        'jenis_kendaraan',
-        'tarif',
+    protected $fillable = [ // Mendaftar kolom yang boleh diisi massal
+        'area_id', // ID area parkir terkait
+        'jenis_kendaraan', // Jenis kendaraan (Motor/Mobil)
+        'tarif', // Nilai tarif per hari
     ];
 
-    public function areaParkir()
+    public function areaParkir() // Relasi ke model AreaParkir
     {
-        return $this->belongsTo(AreaParkir::class, 'area_id');
+        return $this->belongsTo(AreaParkir::class, 'area_id'); // Tarif dimiliki oleh satu area parkir
     }
 }

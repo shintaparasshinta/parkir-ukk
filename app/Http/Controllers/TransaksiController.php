@@ -80,7 +80,11 @@ class TransaksiController extends Controller // Mendefinisikan controller transa
 
         $area = AreaParkir::find($request->area_id); // Ambil data area parkir
         $terisi = Transaksi::where('area_id', $area->id)->where('status', 'masuk')->count(); // Hitung jumlah terisi saat ini
-        if ($terisi >= $area->kapasitas) { // Jika kapasitas sudah penuh (validasi ulang di server)
+        
+        // Pengaman agar tidak minus jika kapasitas 0
+        $kapasitasAsli = $area->kapasitas > 0 ? $area->kapasitas : 1; // Fallback ke 1 jika kapasitas 0
+        
+        if ($terisi >= $kapasitasAsli) { // Jika kapasitas sudah penuh (validasi ulang di server)
             return redirect()->back() // Kembali
                 ->with('error', 'Area ' . $area->nama_area . ' sudah penuh! Pilih area lain.') // Pesan error
                 ->withInput(); // Bawa input sebelumnya
@@ -133,10 +137,11 @@ class TransaksiController extends Controller // Mendefinisikan controller transa
             ]);
         }
 
-        // Update status area
+        // Hitung persentase dengan pengaman kapasitas 0
         $totalKendaraan = Transaksi::where('area_id', $request->area_id)->where('status', 'masuk')->count(); // Hitung total terisi setelah masuk
         $area = AreaParkir::find($request->area_id); // Ambil ulang data area
-        $persentase = ($totalKendaraan / $area->kapasitas) * 100; // Hitung persentase keterisian
+        $kapasitas = $area->kapasitas > 0 ? $area->kapasitas : 1; // Fallback ke 1 agar tidak division by zero
+        $persentase = ($totalKendaraan / $kapasitas) * 100; // Hitung persentase keterisian
 
         if ($persentase >= 100) { // Jika sudah 100% atau lebih
             $area->update(['status' => 'penuh']); // Set status penuh
@@ -217,10 +222,11 @@ class TransaksiController extends Controller // Mendefinisikan controller transa
             ]);
         }
 
-        // Update status area
+        // Hitung persentase dengan pengaman kapasitas 0
         $totalKendaraan = Transaksi::where('area_id', $transaksi->area_id)->where('status', 'masuk')->count(); // Hitung total terisi setelah keluar
         $area = AreaParkir::find($transaksi->area_id); // Ambil data area
-        $persentase = ($totalKendaraan / $area->kapasitas) * 100; // Hitung persentase keterisian
+        $kapasitas = $area->kapasitas > 0 ? $area->kapasitas : 1; // Fallback ke 1 agar tidak division by zero
+        $persentase = ($totalKendaraan / $kapasitas) * 100; // Hitung persentase keterisian
 
         if ($persentase < 80) { // Jika di bawah 80%
             $area->update(['status' => 'tersedia']); // Set status tersedia

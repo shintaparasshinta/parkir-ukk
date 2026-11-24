@@ -43,7 +43,7 @@ class KendaraanController extends Controller // Mendefinisikan controller kendar
     public function store(Request $request) // Method untuk menyimpan kendaraan baru
     {
         $validated = $request->validate([ // Validasi input dan ambil data yang lolos validasi
-            'plat_nomor'      => 'required|string|max:20|unique:kendaraans,plat_nomor', // Wajib, string, max 20, unik di tabel kendaraans
+            'plat_nomor'      => 'required|string|max:20|unique:kendaraan,plat_nomor', // Wajib, string, max 20, unik di tabel kendaraan
             'pemilik'         => 'required|string|max:255', // Wajib, string, max 255
             'jenis_kendaraan' => 'required|in:Motor,Mobil', // Wajib, hanya Motor atau Mobil
             'merk'            => 'required|string|max:255', // Wajib, string, max 255
@@ -84,7 +84,7 @@ class KendaraanController extends Controller // Mendefinisikan controller kendar
         $kendaraan = Kendaraan::findOrFail($id); // Cari kendaraan yang akan diupdate
 
         $validated = $request->validate([ // Validasi input update
-            'plat_nomor'      => 'required|string|max:20|unique:kendaraans,plat_nomor,' . $kendaraan->id, // Unik kecuali untuk ID ini sendiri
+            'plat_nomor'      => 'required|string|max:20|unique:kendaraan,plat_nomor,' . $kendaraan->id, // Unik di tabel kendaraan kecuali untuk ID ini sendiri
             'pemilik'         => 'required|string|max:255', // Wajib, string, max 255
             'jenis_kendaraan' => 'required|in:Motor,Mobil', // Wajib, hanya Motor atau Mobil
             'merk'            => 'required|string|max:255', // Wajib, string, max 255

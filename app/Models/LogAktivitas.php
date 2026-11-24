@@ -1,23 +1,23 @@
 <?php
 
-namespace App\Models;
+namespace App\Models; // Menentukan namespace model
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory; // Mengimpor trait HasFactory
+use Illuminate\Database\Eloquent\Model; // Mengimpor kelas dasar Model Eloquent
 
-class LogAktivitas extends Model
+class LogAktivitas extends Model // Mendefinisikan model LogAktivitas
 {
-    use HasFactory;
+    use HasFactory; // Mengaktifkan trait HasFactory
 
-    protected $table = 'log_aktivitas';
+    protected $table = 'log_aktivitas'; // Menentukan nama tabel eksplisit
 
-    protected $fillable = [
-        'user_id',
-        'aktivitas',
+    protected $fillable = [ // Mendaftar kolom yang boleh diisi massal
+        'user_id', // ID pengguna yang melakukan aktivitas
+        'aktivitas', // Deskripsi aktivitas
     ];
 
-    public function user()
+    public function user() // Relasi ke model User
     {
-        return $this->belongsTo(User::class, 'user_id');
+        return $this->belongsTo(User::class, 'user_id'); // Log dimiliki oleh satu User
     }
 }

@@ -1,123 +1,137 @@
 <?php
 
-namespace App\Http\Controllers; // Menentukan namespace controller
+namespace App\Http\Controllers;
 
-use App\Models\User; // Mengimpor model User untuk operasi CRUD pengguna
-use App\Models\LogAktivitas; // Mengimpor model LogAktivitas untuk pencatatan aktivitas
-use Illuminate\Http\Request; // Mengimpor kelas Request untuk menangani input HTTP
-use Illuminate\Support\Facades\Hash; // Mengimpor facade Hash untuk hashing password
-use Illuminate\Support\Facades\Validator; // Mengimpor facade Validator untuk validasi manual
+use App\Models\User;
+use App\Models\LogAktivitas;
+use App\Models\Notification; // [BARU] Impor model Notification
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
 
-class UserController extends Controller // Mendefinisikan controller manajemen pengguna
+class UserController extends Controller
 {
-    public function index() // Method untuk menampilkan daftar pengguna
+    public function index()
     {
-        $users = User::orderBy('created_at', 'desc')->paginate(10); // Ambil data user terbaru, paginasi 10 per halaman
+        $users = User::orderBy('created_at', 'desc')->paginate(10);
         
-        $totalUsers = User::count(); // Hitung total seluruh user
-        $totalAdmin = User::where('role', 'admin')->count(); // Hitung total user dengan role admin
-        $totalPetugas = User::where('role', 'petugas')->count(); // Hitung total user dengan role petugas
-        $totalOwner = User::where('role', 'owner')->count(); // Hitung total user dengan role owner
+        $totalUsers = User::count();
+        $totalAdmin = User::where('role', 'admin')->count();
+        $totalPetugas = User::where('role', 'petugas')->count();
+        $totalOwner = User::where('role', 'owner')->count();
 
-        return view('pengguna.index', compact('users', 'totalUsers', 'totalAdmin', 'totalPetugas', 'totalOwner')); // Kirim data ke view pengguna.index
+        return view('pengguna.index', compact('users', 'totalUsers', 'totalAdmin', 'totalPetugas', 'totalOwner'));
     }
 
-    public function create() // Method untuk menampilkan form tambah pengguna
+    public function create()
     {
-        return view('pengguna.create'); // Menampilkan view form create
+        return view('pengguna.create');
     }
 
-    public function store(Request $request) // Method untuk menyimpan pengguna baru
+    public function store(Request $request)
     {
-        $validator = Validator::make($request->all(), [ // Membuat validator untuk input pengguna baru
-            'nama' => 'required|string|max:100', // Nama wajib, string, max 100
-            'username' => 'required|string|max:50|unique:users', // Username wajib, unik di tabel users
-            'password' => 'required|string|min:6', // Password wajib, minimal 6 karakter
-            'role' => 'required|in:admin,petugas,owner', // Role wajib salah satu dari tiga opsi
+        $validator = Validator::make($request->all(), [
+            'nama' => 'required|string|max:100',
+            'username' => 'required|string|max:50|unique:users',
+            'password' => 'required|string|min:6',
+            'role' => 'required|in:admin,petugas,owner',
         ]);
 
-        if ($validator->fails()) { // Jika validasi gagal
-            return redirect()->back() // Kembali ke halaman sebelumnya
-                ->withErrors($validator) // Bawa pesan error
-                ->withInput(); // Bawa input sebelumnya
+        if ($validator->fails()) {
+            return redirect()->back()->withErrors($validator)->withInput();
         }
 
-        $user = User::create([ // Simpan user baru ke database
-            'nama' => $request->nama, // Nama lengkap
-            'username' => $request->username, // Username unik
-            'password' => Hash::make($request->password), // Password di-hash sebelum disimpan
-            'role' => $request->role, // Role pengguna
+        $user = User::create([
+            'nama' => $request->nama,
+            'username' => $request->username,
+            'password' => Hash::make($request->password),
+            'role' => $request->role,
         ]);
 
-        // Catat log
-        LogAktivitas::create([ // Mencatat log penambahan pengguna
-            'user_id' => auth()->user()->id, // ID admin yang menambah
-            'aktivitas' => 'Menambahkan pengguna: ' . $request->username . ' (' . $request->role . ')', // Deskripsi aktivitas
+        LogAktivitas::create([
+            'user_id' => auth()->user()->id,
+            'aktivitas' => 'Menambahkan pengguna: ' . $request->username . ' (' . $request->role . ')',
         ]);
 
-        return redirect()->route('pengguna.index') // Redirect ke halaman index pengguna
-            ->with('success', 'Pengguna berhasil ditambahkan!'); // Pesan sukses
+        // [BARU] Kirim notif ke Owner
+        Notification::kirimKeOwner(
+            'Pengguna Baru Ditambahkan',
+            'Admin menambahkan pengguna baru: ' . $request->nama . ' dengan hak akses ' . strtoupper($request->role),
+            'info',
+            route('pengguna.index')
+        );
+
+        return redirect()->route('pengguna.index')->with('success', 'Pengguna berhasil ditambahkan!');
     }
 
-    public function edit(User $pengguna) // Method untuk menampilkan form edit pengguna (route model binding)
+    public function edit(User $pengguna)
     {
-        return view('pengguna.edit', compact('pengguna')); // Kirim data user ke view pengguna.edit
+        return view('pengguna.edit', compact('pengguna'));
     }
 
-    public function update(Request $request, User $pengguna) // Method untuk memperbarui data pengguna
+    public function update(Request $request, User $pengguna)
     {
-        $validator = Validator::make($request->all(), [ // Membuat validator untuk input update
-            'nama' => 'required|string|max:100', // Nama wajib, string, max 100
-            'username' => 'required|string|max:50|unique:users,username,' . $pengguna->id, // Username unik kecuali milik user ini
-            'role' => 'required|in:admin,petugas,owner', // Role wajib salah satu dari tiga opsi
+        $validator = Validator::make($request->all(), [
+            'nama' => 'required|string|max:100',
+            'username' => 'required|string|max:50|unique:users,username,' . $pengguna->id,
+            'role' => 'required|in:admin,petugas,owner',
         ]);
 
-        if ($validator->fails()) { // Jika validasi gagal
-            return redirect()->back() // Kembali ke halaman sebelumnya
-                ->withErrors($validator) // Bawa pesan error
-                ->withInput(); // Bawa input sebelumnya
+        if ($validator->fails()) {
+            return redirect()->back()->withErrors($validator)->withInput();
         }
 
-        $data = [ // Siapkan data yang akan diupdate
-            'nama' => $request->nama, // Nama baru
-            'username' => $request->username, // Username baru
-            'role' => $request->role, // Role baru
+        $data = [
+            'nama' => $request->nama,
+            'username' => $request->username,
+            'role' => $request->role,
         ];
 
-        if ($request->filled('password')) { // Jika password diisi (opsional)
-            $data['password'] = Hash::make($request->password); // Hash dan tambahkan ke data
+        if ($request->filled('password')) {
+            $data['password'] = Hash::make($request->password);
         }
 
-        $pengguna->update($data); // Update data user di database
+        $pengguna->update($data);
 
-        // Catat log
-        LogAktivitas::create([ // Mencatat log update pengguna
-            'user_id' => auth()->user()->id, // ID admin yang mengupdate
-            'aktivitas' => 'Mengupdate pengguna: ' . $request->username, // Deskripsi aktivitas
+        LogAktivitas::create([
+            'user_id' => auth()->user()->id,
+            'aktivitas' => 'Mengupdate pengguna: ' . $request->username,
         ]);
 
-        return redirect()->route('pengguna.index') // Redirect ke halaman index pengguna
-            ->with('success', 'Pengguna berhasil diperbarui!'); // Pesan sukses
+        // [BARU] Kirim notif ke Owner
+        Notification::kirimKeOwner(
+            'Perubahan Hak Akses Pengguna',
+            'Admin memperbarui data pengguna: ' . $request->nama . ' menjadi ' . strtoupper($request->role),
+            'warning',
+            route('pengguna.index')
+        );
+
+        return redirect()->route('pengguna.index')->with('success', 'Pengguna berhasil diperbarui!');
     }
 
-    public function destroy(User $pengguna) // Method untuk menghapus pengguna
+    public function destroy(User $pengguna)
     {
-        if ($pengguna->id == auth()->user()->id) { // Cegah user menghapus akun sendiri
-            return redirect()->route('pengguna.index') // Redirect ke halaman index
-                ->with('error', 'Anda tidak dapat menghapus akun sendiri!'); // Pesan error
+        if ($pengguna->id == auth()->user()->id) {
+            return redirect()->route('pengguna.index')->with('error', 'Anda tidak dapat menghapus akun sendiri!');
         }
 
-        $username = $pengguna->username; // Simpan username sebelum dihapus untuk log
+        $username = $pengguna->username;
 
-        // Catat log
-        LogAktivitas::create([ // Mencatat log penghapusan pengguna
-            'user_id' => auth()->user()->id, // ID admin yang menghapus
-            'aktivitas' => 'Menghapus pengguna: ' . $username, // Deskripsi aktivitas
+        LogAktivitas::create([
+            'user_id' => auth()->user()->id,
+            'aktivitas' => 'Menghapus pengguna: ' . $username,
         ]);
 
-        $pengguna->delete(); // Hapus user dari database
+        // [BARU] Kirim notif ke Owner
+        Notification::kirimKeOwner(
+            'Pengguna Dihapus',
+            'Admin menghapus pengguna: ' . $username,
+            'danger',
+            route('pengguna.index')
+        );
 
-        return redirect()->route('pengguna.index') // Redirect ke halaman index pengguna
-            ->with('success', 'Pengguna berhasil dihapus!'); // Pesan sukses
+        $pengguna->delete();
+
+        return redirect()->route('pengguna.index')->with('success', 'Pengguna berhasil dihapus!');
     }
 }
