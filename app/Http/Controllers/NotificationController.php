@@ -3,7 +3,7 @@
 namespace App\Http\Controllers; // Menentukan namespace controller
 
 use App\Models\Notification; // Mengimpor model Notification untuk operasi data notifikasi
-use Illuminate\Http\Request; // Mengimpor kelas Request (tidak dipakai langsung saat ini)
+use Illuminate\Http\Request; // Mengimpor kelas Request (belum dipakai langsung, tapi umum untuk controller)
 
 class NotificationController extends Controller // Mendefinisikan controller notifikasi
 {
@@ -15,8 +15,6 @@ class NotificationController extends Controller // Mendefinisikan controller not
             ->latest() // Urutkan dari yang terbaru
             ->paginate(10); // Paginasi 10 per halaman
 
-        // Filter link: kalau user tidak punya permission 'transaksi',
-        // hilangkan tombol "Lihat" ke halaman transaksi
         $notifications->getCollection()->transform(function($notif) use ($user) { // Transformasi tiap notifikasi di collection
             if ($notif->link && str_contains($notif->link, '/transaksi/')) { // Jika link mengarah ke halaman transaksi
                 if (!$user->hasFeature('transaksi')) { // Dan user tidak punya fitur 'transaksi'
@@ -46,9 +44,10 @@ class NotificationController extends Controller // Mendefinisikan controller not
         return redirect()->back()->with('success', 'Semua notifikasi ditandai dibaca.'); // Redirect kembali dengan pesan sukses
     }
 
-    public function getUnreadCount($userId) // Method untuk menghitung jumlah notifikasi belum dibaca (helper)
+    // [PERBAIKAN KRITIS] Hapus parameter $userId
+    public function getUnreadCount() // Method untuk menghitung jumlah notifikasi belum dibaca (helper)
     {
-        return Notification::where('user_id', $userId) // Filter notifikasi milik user tertentu
+        return Notification::where('user_id', auth()->id()) // Filter notifikasi milik user yang login (bukan dari parameter)
             ->where('is_read', false) // Hanya yang belum dibaca
             ->count(); // Kembalikan jumlahnya
     }

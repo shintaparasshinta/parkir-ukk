@@ -6,21 +6,14 @@ use Illuminate\Database\Seeder; // Mengimpor kelas dasar Seeder
 
 class DatabaseSeeder extends Seeder // Seeder utama yang mengorkestrasi semua seeder lain
 {
-    /**
-     * Seed the application's database.
-     */
     public function run(): void // Method utama yang dipanggil saat `php artisan db:seed`
     {
-        // Panggil semua seeder dengan urutan yang benar
+        // Urutan sangat penting! Role harus dibuat sebelum User
         $this->call([ // Panggil array seeder secara berurutan
-            UserSeeder::class,           // 1. Users dulu (karena tabel lain punya FK ke users)
-            KendaraanSeeder::class,      // 2. Kendaraan (dibutuhkan transaksi)
-            AreaParkirSeeder::class,     // 3. Area Parkir (dibutuhkan tarif & transaksi)
-            TarifParkirSeeder::class,    // 4. Tarif Parkir (tergantung area_id, harus setelah area)
-            // Transaksi dan LogAktivitas tidak perlu di-seed awal
+            RolePermissionSeeder::class, // 1. Buat Role & Permission DULU (Spatie butuh ini sebelum assignRole)
+            AreaParkirSeeder::class,     // 3. Data Master — area parkir
+            KendaraanSeeder::class,      // 4. Data Master — kendaraan
+            TarifParkirSeeder::class,    // 5. Tarif (butuh area_id dari AreaParkirSeeder)
         ]);
-
-        $this->command->info('✅ Semua seeder selesai dijalankan!'); // Pesan sukses setelah semua seeder selesai
-        $this->command->info('🎉 Database siap digunakan!'); // Pesan akhir bahwa database siap
     }
 }

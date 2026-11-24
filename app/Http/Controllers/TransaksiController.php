@@ -2,23 +2,24 @@
 
 namespace App\Http\Controllers; // Menentukan namespace controller
 
-use App\Models\Transaksi; // Mengimpor model Transaksi untuk data transaksi parkir
-use App\Models\Kendaraan; // Mengimpor model Kendaraan untuk data kendaraan
-use App\Models\AreaParkir; // Mengimpor model AreaParkir untuk data & kapasitas area
-use App\Models\TarifParkir; // Mengimpor model TarifParkir untuk tarif per hari
-use App\Models\LogAktivitas; // Mengimpor model LogAktivitas untuk pencatatan aktivitas
-use App\Models\Notification; // Mengimpor model Notification untuk notifikasi ke admin/petugas
+use App\Models\Transaksi; // Mengimpor model Transaksi untuk operasi CRUD data transaksi
+use App\Models\Kendaraan; // Mengimpor model Kendaraan untuk validasi & data kendaraan
+use App\Models\AreaParkir; // Mengimpor model AreaParkir untuk cek kapasitas area
+use App\Models\TarifParkir; // Mengimpor model TarifParkir untuk mengambil tarif per hari
+use App\Models\LogAktivitas; // Mengimpor model LogAktivitas untuk mencatat riwayat aksi
+use App\Models\Notification; // Mengimpor model Notification untuk mengirim notifikasi
 use Illuminate\Http\Request; // Mengimpor kelas Request untuk menangani input HTTP
 use Illuminate\Support\Facades\Validator; // Mengimpor facade Validator untuk validasi manual
-use Carbon\Carbon; // Mengimpor Carbon untuk manipulasi tanggal/waktu
-use Illuminate\Support\Facades\DB; // Mengimpor facade DB untuk update langsung
+use Carbon\Carbon; // Mengimpor Carbon untuk manipulasi tanggal dan waktu
+use Illuminate\Support\Facades\DB; // Mengimpor facade DB untuk update langsung (tanpa model)
+use Illuminate\Database\QueryException; // Mengimpor exception query database untuk try-catch
 
 class TransaksiController extends Controller // Mendefinisikan controller transaksi parkir
 {
     public function index() // Method untuk menampilkan daftar transaksi
     {
-        $transaksi = Transaksi::with(['kendaraan', 'areaParkir', 'petugas']) // Eager load relasi untuk hindari N+1
-            ->orderBy('created_at', 'desc') // Urutkan dari yang terbaru
+        $transaksi = Transaksi::with(['kendaraan', 'areaParkir', 'petugas']) // Eager load relasi untuk hindari N+1 query
+            ->orderBy('created_at', 'desc') // Urutkan dari transaksi terbaru
             ->paginate(10); // Paginasi 10 per halaman
         return view('transaksi.index', compact('transaksi')); // Kirim data ke view transaksi.index
     }
@@ -59,8 +60,8 @@ class TransaksiController extends Controller // Mendefinisikan controller transa
     public function prosesMasuk(Request $request) // Method untuk memproses kendaraan masuk
     {
         $validator = Validator::make($request->all(), [ // Validasi input proses masuk
-            'kendaraan_id' => 'required|exists:kendaraan,id', // Kendaraan wajib dan harus ada
-            'area_id' => 'required|exists:area_parkir,id', // Area wajib dan harus ada
+            'kendaraan_id' => 'required|exists:kendaraan,id', // Kendaraan wajib dan harus ada di tabel
+            'area_id' => 'required|exists:area_parkir,id', // Area wajib dan harus ada di tabel
         ]);
 
         if ($validator->fails()) { // Jika validasi gagal
@@ -82,7 +83,7 @@ class TransaksiController extends Controller // Mendefinisikan controller transa
         $terisi = Transaksi::where('area_id', $area->id)->where('status', 'masuk')->count(); // Hitung jumlah terisi saat ini
         
         // Pengaman agar tidak minus jika kapasitas 0
-        $kapasitasAsli = $area->kapasitas > 0 ? $area->kapasitas : 1; // Fallback ke 1 jika kapasitas 0
+        $kapasitasAsli = $area->kapasitas > 0 ? $area->kapasitas : 1;
         
         if ($terisi >= $kapasitasAsli) { // Jika kapasitas sudah penuh (validasi ulang di server)
             return redirect()->back() // Kembali
@@ -90,8 +91,22 @@ class TransaksiController extends Controller // Mendefinisikan controller transa
                 ->withInput(); // Bawa input sebelumnya
         }
 
-        // Generate kode transaksi
-        $kodeTransaksi = 'TRX-' . date('Ymd') . '-' . str_pad(Transaksi::count() + 1, 3, '0', STR_PAD_LEFT); // Format: TRX-YYYYMMDD-NNN
+        // ==========================================
+        // PERBAIKAN: GENERATE KODE TRANSAKSI ANTI-BENTROK
+        // ==========================================
+        $today = date('Ymd'); // Ambil tanggal hari ini (format YYYYMMDD)
+        
+        // Cari transaksi terakhir hari ini berdasarkan kode (descending)
+        $lastTransaksi = Transaksi::where('kode_transaksi', 'like', "TRX-{$today}-%")
+            ->orderBy('kode_transaksi', 'desc')
+            ->first();
+
+        // Ambil 3 digit terakhir dari kode terakhir, tambah 1. Jika kosong, mulai dari 1.
+        $urutan = $lastTransaksi ? (int) substr($lastTransaksi->kode_transaksi, -3) + 1 : 1;
+        
+        // Format kode: TRX-YYYYMMDD-NNN (contoh: TRX-20261124-001)
+        $kodeTransaksi = 'TRX-' . $today . '-' . str_pad($urutan, 3, '0', STR_PAD_LEFT);
+
         $kendaraan = Kendaraan::find($request->kendaraan_id); // Ambil data kendaraan
 
         // Ambil tarif PER HARI berdasarkan area & jenis kendaraan
@@ -105,17 +120,23 @@ class TransaksiController extends Controller // Mendefinisikan controller transa
                 ->withInput(); // Bawa input sebelumnya
         }
 
-        // Buat transaksi (kolom tarif = tarif per hari)
-        $transaksi = Transaksi::create([ // Simpan transaksi baru
-            'kode_transaksi' => $kodeTransaksi, // Kode unik transaksi
-            'kendaraan_id' => $request->kendaraan_id, // ID kendaraan
-            'area_id' => $request->area_id, // ID area parkir
-            'petugas_id' => auth()->user()->id, // ID petugas yang memproses
-            'waktu_masuk' => Carbon::now(), // Waktu masuk sekarang
-            'waktu_keluar' => null, // Belum keluar
-            'tarif' => $tarif->tarif, // Tarif per hari (bukan total)
-            'status' => 'masuk', // Status awal: masuk
-        ]);
+        try { // Coba proses insert (untuk menangkap error DB)
+            // Buat transaksi (kolom tarif = tarif per hari)
+            $transaksi = Transaksi::create([ // Simpan transaksi baru
+                'kode_transaksi' => $kodeTransaksi, // Kode unik transaksi
+                'kendaraan_id' => $request->kendaraan_id, // ID kendaraan
+                'area_id' => $request->area_id, // ID area parkir
+                'petugas_id' => auth()->user()->id, // ID petugas yang memproses
+                'waktu_masuk' => Carbon::now(), // Waktu masuk sekarang
+                'waktu_keluar' => null, // Belum keluar
+                'tarif' => $tarif->tarif, // Tarif per hari (bukan total)
+                'status' => 'masuk', // Status awal: masuk
+            ]);
+        } catch (QueryException $e) { // Tangkap error DB (misal masih ada duplikasi)
+            return redirect()->back() // Kembali ke form
+                ->with('error', 'Terjadi kesalahan sistem saat menyimpan transaksi. Silakan coba lagi.') // Pesan error
+                ->withInput(); // Bawa input sebelumnya
+        }
 
         LogAktivitas::create([ // Catat log kendaraan masuk
             'user_id' => auth()->user()->id, // ID petugas
@@ -137,7 +158,7 @@ class TransaksiController extends Controller // Mendefinisikan controller transa
             ]);
         }
 
-        // Hitung persentase dengan pengaman kapasitas 0
+        // Update status area
         $totalKendaraan = Transaksi::where('area_id', $request->area_id)->where('status', 'masuk')->count(); // Hitung total terisi setelah masuk
         $area = AreaParkir::find($request->area_id); // Ambil ulang data area
         $kapasitas = $area->kapasitas > 0 ? $area->kapasitas : 1; // Fallback ke 1 agar tidak division by zero
@@ -147,6 +168,8 @@ class TransaksiController extends Controller // Mendefinisikan controller transa
             $area->update(['status' => 'penuh']); // Set status penuh
         } elseif ($persentase >= 80) { // Jika 80% ke atas
             $area->update(['status' => 'hampir_penuh']); // Set status hampir penuh
+        } else {
+            $area->update(['status' => 'tersedia']); // Set status tersedia (jika sebelumnya hampir penuh lalu kapasitas ditambah)
         }
 
         return redirect()->route('transaksi.struk', $transaksi->id) // Redirect ke halaman struk
@@ -222,7 +245,7 @@ class TransaksiController extends Controller // Mendefinisikan controller transa
             ]);
         }
 
-        // Hitung persentase dengan pengaman kapasitas 0
+        // Update status area
         $totalKendaraan = Transaksi::where('area_id', $transaksi->area_id)->where('status', 'masuk')->count(); // Hitung total terisi setelah keluar
         $area = AreaParkir::find($transaksi->area_id); // Ambil data area
         $kapasitas = $area->kapasitas > 0 ? $area->kapasitas : 1; // Fallback ke 1 agar tidak division by zero

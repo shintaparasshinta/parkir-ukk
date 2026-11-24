@@ -494,9 +494,12 @@
                 </button>
 
                 @php
-                    $unreadCount = 0; {{-- Inisialisasi --}}
-                    if (auth()->check()) { {{-- Jika login --}}
-                        $unreadCount = App\Helpers\NotificationHelper::getUnreadCount(auth()->user()->id); {{-- Hitung belum dibaca --}}
+                    $unreadCount = 0; // Inisialisasi
+                    if (auth()->check()) { // Jika login
+                        // Langsung query ke database tanpa Helper
+                        $unreadCount = \App\Models\Notification::where('user_id', auth()->id())
+                            ->where('is_read', false)
+                            ->count();
                     }
                 @endphp
 

@@ -5,62 +5,97 @@ namespace Database\Seeders; // Menentukan namespace seeder
 use Illuminate\Database\Seeder; // Mengimpor kelas dasar Seeder
 use Spatie\Permission\Models\Role; // Mengimpor model Role dari Spatie Permission
 use Spatie\Permission\Models\Permission; // Mengimpor model Permission dari Spatie Permission
+use App\Models\User; // Mengimpor model User untuk pembuatan akun inti
+use Illuminate\Support\Facades\Hash; // Mengimpor facade Hash untuk hashing password
 
-class RolePermissionSeeder extends Seeder // Mendefinisikan seeder untuk role & permission Spatie
+class RolePermissionSeeder extends Seeder // Seeder untuk role, permission, dan akun inti
 {
-    public function run() // Method utama yang dijalankan saat seeder dieksekusi
+    public function run(): void // Method utama yang dijalankan saat seeder dieksekusi
     {
-        // 1. Daftar Semua Fitur
-        $permissions = [ // Array berisi semua permission yang akan dibuat
-            // Admin
-            'crud_user', // Izin CRUD user
-            'crud_tarif', // Izin CRUD tarif
-            'crud_area', // Izin CRUD area parkir
-            'kelola_kendaraan', // Izin kelola kendaraan
-            'akses_log', // Izin akses log aktivitas
-
-            // Petugas
-            'transaksi', // Izin akses transaksi
-            'cetak_struk', // Izin cetak struk
-            'input_kendaraan', // Izin input kendaraan masuk
-            'output_kendaraan', // Izin proses kendaraan keluar
-
-            // Owner
-            'rekap_laporan', // Izin akses rekap laporan
-
-            // Tambahan
-            'hapus_transaksi', // Izin hapus transaksi (khusus, biasanya diberikan selektif)
-        ];
-
-        // Pakai firstOrCreate supaya tidak error kalau sudah ada
-        foreach ($permissions as $permission) { // Iterasi tiap nama permission
-            Permission::firstOrCreate(['name' => $permission]); // Buat jika belum ada, skip jika sudah ada (idempoten)
-        }
-
-        // 2. Buat Role (pakai firstOrCreate)
-        $admin = Role::firstOrCreate(['name' => 'admin']); // Buat role admin jika belum ada
-        $petugas = Role::firstOrCreate(['name' => 'petugas']); // Buat role petugas jika belum ada
-        $owner = Role::firstOrCreate(['name' => 'owner']); // Buat role owner jika belum ada
-
-        // 3. Berikan Izin SESUAI TABEL SOAL SPK
-        // Pakai syncPermissions supaya tidak menumpuk permission lama
-        $admin->syncPermissions([ // Set permission untuk role admin
-            'crud_user', // CRUD user
+        // 1. Daftar Permission (Sesuaikan dengan nama route/middleware di web.php)
+        $permissions = [ // Array nama permission yang dipakai aplikasi
+            // Fitur Admin
+            'kelola_kendaraan', // CRUD kendaraan
+            'crud_area', // CRUD area parkir
             'crud_tarif', // CRUD tarif
-            'crud_area', // CRUD area
-            'kelola_kendaraan', // Kelola kendaraan
-            'akses_log', // Akses log
-        ]);
-
-        $petugas->syncPermissions([ // Set permission untuk role petugas
-            'transaksi', // Akses transaksi
-            'cetak_struk', // Cetak struk
+            'crud_user', // CRUD user
+            'akses_log', // Akses log aktivitas
+            
+            // Fitur Petugas
             'input_kendaraan', // Input kendaraan masuk
             'output_kendaraan', // Proses kendaraan keluar
+            'cetak_struk', // Cetak struk
+            'transaksi', // Akses halaman transaksi
+
+            // Fitur Owner
+            'rekap_laporan' // Akses laporan
+        ];
+
+        foreach ($permissions as $permission) { // Iterasi tiap nama permission
+            Permission::firstOrCreate(['name' => $permission]); // Buat jika belum ada (idempoten)
+        }
+
+        // 2. Buat Role
+        $roleOwner = Role::firstOrCreate(['name' => 'owner']); // Buat role owner jika belum ada
+        $roleAdmin = Role::firstOrCreate(['name' => 'admin']); // Buat role admin jika belum ada
+        $rolePetugas = Role::firstOrCreate(['name' => 'petugas']); // Buat role petugas jika belum ada
+
+        // 3. Sinkronisasi Hak Akses Sesuai Permintaanmu
+        // OWNER: Hanya Laporan
+        $roleOwner->syncPermissions([ // Sync permission untuk owner
+            'rekap_laporan' // Owner hanya bisa akses laporan
         ]);
 
-        $owner->syncPermissions([ // Set permission untuk role owner
-            'rekap_laporan', // Akses rekap laporan
+        // ADMIN: Input kendaraan, area, tarif, pengguna, log
+        // (Catatan: Admin biasanya butuh 'transaksi' juga untuk memantau, tapi saya ikuti instruksimu)
+        $roleAdmin->syncPermissions([ // Sync permission untuk admin
+            'kelola_kendaraan', // CRUD kendaraan
+            'crud_area', // CRUD area parkir
+            'crud_tarif', // CRUD tarif
+            'crud_user', // CRUD user
+            'akses_log' // Akses log
         ]);
+
+        // PETUGAS: Transaksi & Cetak Struk
+        $rolePetugas->syncPermissions([ // Sync permission untuk petugas
+            'input_kendaraan', // Input kendaraan masuk
+            'output_kendaraan', // Proses kendaraan keluar
+            'cetak_struk', // Cetak struk
+            'transaksi' // Akses transaksi
+        ]);
+
+        // 4. BUAT 3 AKUN INTI
+        // Akun Owner
+        $owner = User::firstOrCreate( // Buat user owner jika belum ada (idempoten)
+            ['username' => 'owner'], // Kondisi pencarian
+            [
+                'nama' => 'Pemilik Parkir', // Nama lengkap
+                'password' => Hash::make('password123'), // Password di-hash
+                'role' => 'owner', // Kolom role (legacy, untuk isOwner())
+            ]
+        );
+        $owner->assignRole($roleOwner); // Assign role Spatie (untuk hasFeature())
+
+        // Akun Admin
+        $admin = User::firstOrCreate( // Buat user admin jika belum ada
+            ['username' => 'admin'],
+            [
+                'nama' => 'Administrator',
+                'password' => Hash::make('password123'),
+                'role' => 'admin',
+            ]
+        );
+        $admin->assignRole($roleAdmin); // Assign role Spatie
+
+        // Akun Petugas
+        $petugas = User::firstOrCreate( // Buat user petugas jika belum ada
+            ['username' => 'petugas'],
+            [
+                'nama' => 'Petugas Parkir',
+                'password' => Hash::make('password123'),
+                'role' => 'petugas',
+            ]
+        );
+        $petugas->assignRole($rolePetugas); // Assign role Spatie
     }
-}   
+}
